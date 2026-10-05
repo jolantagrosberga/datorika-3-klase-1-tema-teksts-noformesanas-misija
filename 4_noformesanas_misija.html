@@ -91,7 +91,7 @@ select.fsize{width:56px}
 svg{display:block}
 
 /* ---------- darba zona ---------- */
-.work{display:flex;flex:1;min-height:0}
+.work{display:flex;flex:1;min-height:0;position:relative}
 .paperwrap{flex:1;background:#dfe4ec;padding:14px;overflow:auto}
 .paper{background:#fff;max-width:720px;margin:0 auto;min-height:100%;padding:34px 46px;
        box-shadow:0 2px 10px rgba(0,0,0,.18);user-select:none;-webkit-user-select:none;cursor:text}
@@ -146,6 +146,8 @@ svg{display:block}
 .bar{height:8px;background:#e6ebf3;border-radius:999px;overflow:hidden;margin-bottom:10px;flex:none}
 .bar i{display:block;height:100%;background:#2e7d32;width:0;transition:width .3s}
 .btns{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;flex:none;align-items:center}
+.act.key{background:#7030A0;color:#fff}
+.act.key.off{background:#5a6a7d}
 .mpick{display:flex;gap:4px;margin-left:auto}
 .mpick button{width:26px;height:26px;border-radius:7px;border:2px solid #1F4E79;background:#fff;
      color:#1F4E79;font:inherit;font-size:12.5px;font-weight:bold;cursor:pointer;padding:0}
@@ -186,6 +188,29 @@ button.act:disabled{background:#c5ccd6;cursor:not-allowed}
 .dpick.on{background:#1F4E79;color:#fff;border-color:#1F4E79}
 .colwrap{flex:1;overflow:auto;background:#dfe4ec;padding:12px}
 .sheet{background:#fff;padding:22px 26px;box-shadow:0 2px 8px rgba(0,0,0,.15);min-height:100%}
+/* ---------- tālummaiņa ---------- */
+.zoombar{position:absolute;right:16px;bottom:12px;display:flex;align-items:center;gap:4px;
+   background:#fff;border:1px solid #d0d7e2;border-radius:999px;padding:3px 6px;
+   box-shadow:0 1px 4px rgba(0,0,0,.12);font-size:12px;color:#1F4E79;z-index:5}
+.zoombar button{width:22px;height:22px;border:0;background:#eef3fa;color:#1F4E79;border-radius:50%;
+   font:inherit;font-size:14px;font-weight:bold;cursor:pointer;line-height:1;padding:0}
+.zoombar button:hover{background:#d9e6f6}
+.zoombar span{min-width:40px;text-align:center;font-weight:bold}
+/* ---------- PDF drukāšana ---------- */
+#printArea{display:none;color:#000;background:#fff}
+.pdoc{padding:0 0 10px}
+.plabel{font:bold 11pt/1.4 Arial, sans-serif;color:#1F4E79;border-bottom:1px solid #9bb4d0;
+        padding-bottom:3px;margin-bottom:12px}
+.ppara{margin-bottom:9pt;line-height:1.65}
+.ppara.ind{text-indent:2.2em}
+.pfoot{font:9pt Arial, sans-serif;color:#666;margin-top:14pt;border-top:1px solid #ccc;padding-top:4pt}
+@media print{
+  body > *{display:none !important}
+  body > #printArea{display:block !important}
+  .pdoc{page-break-after:always}
+  .pdoc:last-child{page-break-after:auto}
+  @page{margin:16mm}
+}
 
 /* ---------- rezultāts ---------- */
 .overlay{position:absolute;inset:0;background:rgba(255,255,255,.96);display:none;
@@ -218,6 +243,7 @@ button.act:disabled{background:#c5ccd6;cursor:not-allowed}
 </style>
 </head>
 <body>
+<div id="printArea"></div>
 <div id="fit">
 <div class="app">
 
@@ -394,7 +420,14 @@ button.act:disabled{background:#c5ccd6;cursor:not-allowed}
   </div>
 
   <div class="work" id="work">
-    <div class="paperwrap"><div class="paper" id="page"></div></div>
+    <div class="paperwrap" style="position:relative">
+      <div class="paper" id="page"></div>
+      <div class="zoombar">
+        <button id="zOut" title="Mazāki burti">&minus;</button>
+        <span id="zoomVal">100%</span>
+        <button id="zIn" title="Lielāki burti">+</button>
+      </div>
+    </div>
 
     <div class="pane" id="pane">
       <h3 id="paneTitle">Misija</h3>
@@ -413,6 +446,8 @@ button.act:disabled{background:#c5ccd6;cursor:not-allowed}
         <div class="btns">
           <button class="act" id="check">Pārbaudīt</button>
           <button class="act alt" id="next">Nākamā &#8594;</button>
+          <button class="act key" id="showAns" style="display:none">&#128161; Rādīt atbildes</button>
+          <button class="act ghost" id="pdfLevel" style="display:none">&#11015; PDF</button>
           <span class="mpick" id="mpick"></span>
         </div>
         <div class="msg" id="msg"></div>
@@ -468,6 +503,7 @@ button.act:disabled{background:#c5ccd6;cursor:not-allowed}
       <div class="best" id="best"></div>
       <div class="cardbtns">
         <button class="act" id="againBtn">Mēģināt vēlreiz</button>
+        <button class="act alt" id="pdfTheme">&#11015; Saglabāt visu tēmu (PDF)</button>
         <button class="act ghost" id="printBtn">Drukāt diplomu</button>
         <button class="act ghost" id="closeBtn">Aizvērt</button>
       </div>
@@ -871,6 +907,7 @@ function load(){
   restoreWork(workKey);
   sel.clear(); history = []; redoStack = []; updateUndo();
   $("paneTitle").textContent = "Misija · " + theme;
+  resetAnswers();
   renderTasks();
   buildPick();
   updateProgress();
@@ -934,6 +971,7 @@ function markTasks(){
 
 function updateProgress(){
   const n = doneSet[theme][level].size, t = cur().length;
+  $("pdfLevel").style.display = (n >= t) ? "inline-block" : "none";
   $("prog").textContent = "Misija " + (mi+1) + " no " + t + " · izpildītas: " + n + " / " + t;
   $("bar").style.width = (n/t*100) + "%";
 }
@@ -975,7 +1013,17 @@ function styleWord(el, st, scale){
   el.style.background = st.hl === "none" ? "transparent" : st.hl;
 }
 
-function scaleNow(){ return (mode === "challenge" || mode === "demo") ? PX.challenge : (level === "grūts" ? PX.hard : PX.mission); }
+let zoom = 1;
+function scaleNow(){
+  const base = (mode === "challenge" || mode === "demo") ? PX.challenge : (level === "grūts" ? PX.hard : PX.mission);
+  return base * zoom;
+}
+function setZoom(z){
+  zoom = Math.min(2, Math.max(0.8, Math.round(z * 20) / 20));
+  $("zoomVal").textContent = Math.round(zoom * 100) + "%";
+  render();
+  if(mode === "challenge" || mode === "demo") renderSample();
+}
 
 function render(){
   const scale = scaleNow();
@@ -1350,6 +1398,7 @@ function check(){
   const uniq = [...new Set(problems)];
   problems.length = 0; uniq.forEach(x=>problems.push(x));
   const extra = extraProblems();
+  if(ansShown){ setMsg("Rādītas atbildes — paslēp tās, lai skolēns pilda pats.", "bad"); return; }
   if(!problems.length && !extra.length){
     const first = !doneSet[theme][level].has(mi);
     doneSet[theme][level].add(mi);
@@ -1375,8 +1424,147 @@ $("tipHead").onclick = ()=>{
   $("tipArrow").innerHTML = open ? "&#9652;" : "&#9662;";
 };
 
+$("zIn").onclick  = ()=>setZoom(zoom + 0.1);
+$("zOut").onclick = ()=>setZoom(zoom - 0.1);
+$("pdfLevel").onclick = savePdfLevel;
+$("showAns").onclick = toggleAnswers;
+
 $("check").onclick = check;
 $("next").onclick = ()=>{ saveWork(); mi = (mi+1) % cur().length; load(); };
+
+
+/* ============ SKOLOTĀJAS ATBILDES ============ */
+let ansShown = false, ansBackup = null;
+
+function applyGoals(){
+  cur()[mi].goals.forEach(g=>{
+    if(g.list !== undefined){ lists[g.para] = {type:g.list, style:lists[g.para].style || 0}; return; }
+    if(g.align !== undefined){ align[g.para] = g.align; return; }
+    targetsOf(g).forEach(([p,i])=>{
+      PROPS.forEach(pr=>{ if(g[pr] !== undefined) state[p][i][pr] = g[pr]; });
+    });
+  });
+}
+
+function toggleAnswers(){
+  if(mode !== "mission") return;
+  if(!ansShown){
+    ansBackup = JSON.parse(JSON.stringify(currentWork()));
+    snapshot();
+    applyGoals();
+    ansShown = true;
+    $("showAns").innerHTML = "&#8617; Paslēpt atbildes";
+    $("showAns").classList.add("off");
+    setMsg("Rādītas pareizās atbildes. Uzspied vēlreiz, lai atgrieztu skolēna darbu.");
+  } else {
+    if(ansBackup){
+      docWords = JSON.parse(JSON.stringify(ansBackup.docWords));
+      state    = JSON.parse(JSON.stringify(ansBackup.state));
+      align    = ansBackup.align.slice();
+      indent   = ansBackup.indent.slice();
+      plevel   = ansBackup.plevel.slice();
+      lists    = JSON.parse(JSON.stringify(ansBackup.lists));
+    }
+    resetAnswers();
+    setMsg("");
+  }
+  render();
+}
+
+function resetAnswers(){
+  ansShown = false; ansBackup = null;
+  $("showAns").innerHTML = "&#128161; R\u0101d\u012bt atbildes";
+  $("showAns").classList.remove("off");
+  $("showAns").style.display = TEACHER_PAGE ? "inline-block" : "none";
+}
+
+/* ================= PDF SAGLABĀŠANA ================= */
+function esc(t){ return String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function wordStyle(st){
+  const u = st.u ? ("underline" + (st.uStyle && st.uStyle !== "solid" ? " " + st.uStyle : "")) : "none";
+  return "font-weight:" + (st.b ? "bold" : "normal") +
+         ";font-style:" + (st.i ? "italic" : "normal") +
+         ";text-decoration:" + u +
+         ";font-size:" + parseInt(st.size,10) + "pt" +
+         ";font-family:" + (FONT_CSS[st.font] || st.font) +
+         ";color:" + st.color +
+         (st.hl === "none" ? "" : ";background:" + st.hl);
+}
+
+/* viena dokumenta HTML drukai */
+function docHtml(W, label){
+  const marks = listMarkers(W.lists, W.plevel);
+  let out = '<div class="pdoc"><div class="plabel">' + esc(label) + "</div>";
+  for(let p = 0; p < W.docWords.length; p++){
+    out += '<div class="ppara' + (W.indent[p] ? " ind" : "") + '" style="text-align:' + W.align[p] +
+           ";padding-left:" + (W.plevel[p] * 22) + 'px">';
+    if(marks[p]) out += '<span style="font-size:11pt">' + esc(marks[p]) + "&nbsp;</span>";
+    out += W.docWords[p].map((w,i)=>
+      '<span style="' + wordStyle(W.state[p][i]) + '">' + esc(w || "____") + "</span>").join(" ");
+    out += "</div>";
+  }
+  return out + '<div class="pfoot">Jaunmārupes pamatskola &middot; datorika 3. klasei &middot; ' +
+         'Interaktīvo rīku sagatavoja Jolanta Grosberga-Gernere</div></div>';
+}
+
+/* pašreizējais darbs kā saglabājams objekts */
+function currentWork(){
+  return { docWords: docWords, state: state, align: align, indent: indent, plevel: plevel, lists: lists };
+}
+
+/* misijas darbs — saglabātais vai pašreizējais */
+function workOf(th, lv, k){
+  if(mode === "mission" && th === theme && lv === level && k === mi) return currentWork();
+  return workSaved[th + "|" + lv + "|" + k] || null;
+}
+
+function printSet(html, fileName){
+  const area = $("printArea");
+  area.innerHTML = html;
+  const old = document.title;
+  document.title = fileName;
+  setTimeout(()=>{
+    window.print();
+    setTimeout(()=>{ document.title = old; area.innerHTML = ""; }, 400);
+  }, 60);
+}
+
+/* viena līmeņa visas misijas */
+function savePdfLevel(){
+  saveWork();
+  let html = "";
+  for(let k = 0; k < cur().length; k++){
+    const W = workOf(theme, level, k);
+    if(W) html += docHtml(W, theme + " · " + LEVEL_LABEL[level] + " · misija " + (k+1));
+  }
+  if(!html){ setMsg("Vēl nav ko saglabāt.", "bad"); return; }
+  printSet(html, "Noformesanas_misija_" + lat(theme) + "_" + lat(level));
+}
+
+/* visa tēma: trīs līmeņi + izaicinājums */
+function savePdfTheme(){
+  saveWork();
+  let html = "";
+  LEVEL_ORDER.forEach(l=>{
+    for(let k = 0; k < MISSIONS[theme][l[0]].length; k++){
+      const W = workOf(theme, l[0], k);
+      if(W) html += docHtml(W, theme + " · " + LEVEL_LABEL[l[0]] + " · misija " + (k+1));
+    }
+  });
+  if(chalWork) html += docHtml(chalWork, theme + " · izaicinājums «" + curChal().title + "»");
+  if(!html){ setMsg("Vēl nav ko saglabāt.", "bad"); return; }
+  printSet(html, "Noformesanas_misija_" + lat(theme) + "_visa_tema");
+}
+
+/* latviešu burti faila nosaukumam */
+function lat(t){
+  const map = {"ā":"a","č":"c","ē":"e","ģ":"g","ī":"i","ķ":"k","ļ":"l","ņ":"n","š":"s","ū":"u","ž":"z",
+               "Ā":"A","Č":"C","Ē":"E","Ģ":"G","Ī":"I","Ķ":"K","Ļ":"L","Ņ":"N","Š":"S","Ū":"U","Ž":"Z"};
+  return t.split("").map(c=>map[c] || c).join("").replace(/[^A-Za-z0-9]+/g,"_");
+}
+
+let chalWork = null;
 
 /* ================= IZAICINĀJUMS ================= */
 function buildSampleState(D){
@@ -1548,6 +1736,7 @@ function scoreChallenge(){
 
 function finishChallenge(){
   clearInterval(chalTimer);
+  chalWork = JSON.parse(JSON.stringify(currentWork()));
   const secs = Math.floor((Date.now()-chalT0)/1000);
   const r = scoreChallenge();
   const stars = r.pct === 100 ? 3 : r.pct >= 80 ? 2 : r.pct >= 60 ? 1 : 0;
@@ -1559,6 +1748,7 @@ function finishChallenge(){
     : stars === 1 ? "Labs sākums — pamēģini vēlreiz un salīdzini uzmanīgāk."
     : "Paskaties uz paraugu uzmanīgi un mēģini vēlreiz.");
   $("cardStars").textContent = "★".repeat(stars) + "☆".repeat(3-stars);
+  $("pdfTheme").innerHTML = "&#11015; Saglabāt visu tēmu (" + theme + ")";
   $("resPct").textContent = r.pct + "%";
   $("resTime").textContent = tstr;
   $("resExtra").textContent = r.extra;
@@ -1591,6 +1781,7 @@ $("chalExit").onclick = ()=>{ exitChallengeView(); mode = "mission"; buildLevels
 $("againBtn").onclick = ()=>{ $("overlay").style.display = "none"; openChallenge(); };
 $("closeBtn").onclick = ()=>{ $("overlay").style.display = "none"; };
 $("printBtn").onclick = ()=>window.print();
+$("pdfTheme").onclick = ()=>{ $("overlay").style.display = "none"; savePdfTheme(); };
 
 /* ================= skolotāja režīms ================= */
 (function(){
