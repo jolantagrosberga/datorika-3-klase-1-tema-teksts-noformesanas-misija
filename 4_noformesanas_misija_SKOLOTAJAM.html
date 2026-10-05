@@ -145,7 +145,13 @@ svg{display:block}
 .prog{font-size:12px;color:#5a6a7d;margin:8px 0 4px}
 .bar{height:8px;background:#e6ebf3;border-radius:999px;overflow:hidden;margin-bottom:10px;flex:none}
 .bar i{display:block;height:100%;background:#2e7d32;width:0;transition:width .3s}
-.btns{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;flex:none}
+.btns{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;flex:none;align-items:center}
+.mpick{display:flex;gap:4px;margin-left:auto}
+.mpick button{width:26px;height:26px;border-radius:7px;border:2px solid #1F4E79;background:#fff;
+     color:#1F4E79;font:inherit;font-size:12.5px;font-weight:bold;cursor:pointer;padding:0}
+.mpick button.on{background:#1F4E79;color:#fff}
+.mpick button.fin{border-color:#2e7d32;color:#2e7d32}
+.mpick button.fin.on{background:#2e7d32;color:#fff;border-color:#2e7d32}
 button.act{font:inherit;font-size:13px;padding:7px 14px;border:0;border-radius:7px;background:#1F4E79;color:#fff;cursor:pointer}
 button.act.alt{background:#C75000}
 button.act.ghost{background:#e6ebf3;color:#1F4E79}
@@ -407,7 +413,7 @@ button.act:disabled{background:#c5ccd6;cursor:not-allowed}
         <div class="btns">
           <button class="act" id="check">Pārbaudīt</button>
           <button class="act alt" id="next">Nākamā &#8594;</button>
-          <button class="act ghost" id="reset">No jauna</button>
+          <span class="mpick" id="mpick"></span>
         </div>
         <div class="msg" id="msg"></div>
         <div class="tip">
@@ -689,7 +695,7 @@ function buildThemes(){
     b.onmousedown = e=>e.preventDefault();
     b.onclick = ()=>{
       theme = t; level = "viegls"; mi = 0; mode = "mission";
-      exitChallengeView(); buildThemes(); buildLevels(); load();
+      saveWork(); exitChallengeView(); buildThemes(); buildLevels(); load();
     };
     $("themes").appendChild(b);
   });
@@ -704,7 +710,7 @@ function buildLevels(){
     b.textContent = (open ? "" : "🔒 ") + l[1] + (done ? " ✓" : "");
     b.onclick = ()=>{
       if(!open){ setMsg("Vispirms izpildi iepriekšējo līmeni.", "bad"); return; }
-      level = l[0]; mi = 0; mode = "mission"; exitChallengeView(); buildThemes(); buildLevels(); load();
+      saveWork(); level = l[0]; mi = 0; mode = "mission"; exitChallengeView(); buildThemes(); buildLevels(); load();
     };
     $("levels").appendChild(b);
   });
@@ -814,14 +820,59 @@ function initDoc(title, paras){
   lists = all.map(()=>({type:"none", style:0}));
 }
 
+const workSaved = {};                 /* skolēna darbs: tēma|līmenis|misija */
+let workKey = null;
+
+function snapKey(){ return theme + "|" + level + "|" + mi; }
+
+function saveWork(){
+  if(mode !== "mission" || !workKey) return;
+  workSaved[workKey] = {
+    docWords: JSON.parse(JSON.stringify(docWords)),
+    state:    JSON.parse(JSON.stringify(state)),
+    align:    align.slice(),
+    indent:   indent.slice(),
+    plevel:   plevel.slice(),
+    lists:    JSON.parse(JSON.stringify(lists))
+  };
+}
+
+function restoreWork(k){
+  const S = workSaved[k];
+  if(!S) return false;
+  docWords = JSON.parse(JSON.stringify(S.docWords));
+  state    = JSON.parse(JSON.stringify(S.state));
+  align    = S.align.slice();
+  indent   = S.indent.slice();
+  plevel   = S.plevel.slice();
+  lists    = JSON.parse(JSON.stringify(S.lists));
+  return true;
+}
+
+/* pogas 1 2 3 — pāriet uz jebkuru šī līmeņa misiju */
+function buildPick(){
+  const n = cur().length;
+  $("mpick").innerHTML = Array.from({length:n}, (_,k)=>
+    '<button data-k="' + k + '" class="' + (k===mi ? "on " : "") +
+    (doneSet[theme][level].has(k) ? "fin" : "") + '" title="' +
+    (doneSet[theme][level].has(k) ? "Izpildīta misija " : "Misija ") + (k+1) + '">' + (k+1) + '</button>').join("");
+  $("mpick").querySelectorAll("button").forEach(b=>{
+    b.onmousedown = e=>e.preventDefault();
+    b.onclick = ()=>{ if(+b.dataset.k === mi) return; saveWork(); mi = +b.dataset.k; load(); };
+  });
+}
+
 function load(){
   mode = "mission";
   const m = cur()[mi];
   doc = { title: m.title, paras: m.paras };
   initDoc(m.title, m.paras);
+  workKey = snapKey();
+  restoreWork(workKey);
   sel.clear(); history = []; redoStack = []; updateUndo();
   $("paneTitle").textContent = "Misija · " + theme;
   renderTasks();
+  buildPick();
   updateProgress();
   setMsg("");
   render();
@@ -1302,7 +1353,7 @@ function check(){
   if(!problems.length && !extra.length){
     const first = !doneSet[theme][level].has(mi);
     doneSet[theme][level].add(mi);
-    buildThemes(); buildLevels(); updateProgress();
+    buildThemes(); buildLevels(); buildPick(); updateProgress();
     if(levelDone(level)){
       const nx = nextLevel(level);
       setMsg("Lieliski! Misija izpildīta. " + (nx
@@ -1325,8 +1376,7 @@ $("tipHead").onclick = ()=>{
 };
 
 $("check").onclick = check;
-$("reset").onclick = load;
-$("next").onclick = ()=>{ mi = (mi+1) % cur().length; load(); };
+$("next").onclick = ()=>{ saveWork(); mi = (mi+1) % cur().length; load(); };
 
 /* ================= IZAICINĀJUMS ================= */
 function buildSampleState(D){
@@ -1348,6 +1398,7 @@ function buildSampleState(D){
 }
 
 function openSplit(D, kind){
+  saveWork();
   mode = kind;
   refDef = D;
   doc = { title: D.title, paras: D.paras };
