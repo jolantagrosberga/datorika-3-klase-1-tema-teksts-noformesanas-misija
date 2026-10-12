@@ -146,6 +146,7 @@ svg{display:block}
 .bar{height:8px;background:#e6ebf3;border-radius:999px;overflow:hidden;margin-bottom:10px;flex:none}
 .bar i{display:block;height:100%;background:#2e7d32;width:0;transition:width .3s}
 .btns{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;flex:none;align-items:center}
+.act.pdf{background:#2e7d32;color:#fff}
 .act.key{background:#7030A0;color:#fff}
 .act.key.off{background:#5a6a7d}
 .mpick{display:flex;gap:4px;margin-left:auto}
@@ -415,6 +416,7 @@ button.act:disabled{background:#c5ccd6;cursor:not-allowed}
       <span id="timeWrap">Laiks: <b id="chalTime">0:00</b></span>
       <button class="act" id="chalDone">Gatavs!</button>
       <button class="act ghost" id="demoClear">Notīrīt noformējumu</button>
+      <button class="act pdf" id="pdfThemeBar">&#11015; Saglabāt visu tēmu PDF</button>
       <button class="act ghost" id="chalExit">Iziet</button>
     </span>
   </div>
@@ -446,8 +448,8 @@ button.act:disabled{background:#c5ccd6;cursor:not-allowed}
         <div class="btns">
           <button class="act" id="check">Pārbaudīt</button>
           <button class="act alt" id="next">Nākamā &#8594;</button>
+          <button class="act pdf" id="pdfLevel">&#11015; Saglabāt PDF</button>
           <button class="act key" id="showAns" style="display:none">&#128161; Rādīt atbildes</button>
-          <button class="act ghost" id="pdfLevel" style="display:none">&#11015; PDF</button>
           <span class="mpick" id="mpick"></span>
         </div>
         <div class="msg" id="msg"></div>
@@ -499,12 +501,9 @@ button.act:disabled{background:#c5ccd6;cursor:not-allowed}
         <div><b id="resTime">0:00</b><span>laiks</span></div>
         <div><b id="resExtra">0</b><span>liekie</span></div>
       </div>
-      <div><input type="text" id="who" placeholder="Ieraksti savu vārdu" autocomplete="off"></div>
-      <div class="best" id="best"></div>
       <div class="cardbtns">
         <button class="act" id="againBtn">Mēģināt vēlreiz</button>
         <button class="act alt" id="pdfTheme">&#11015; Saglabāt visu tēmu (PDF)</button>
-        <button class="act ghost" id="printBtn">Drukāt diplomu</button>
         <button class="act ghost" id="closeBtn">Aizvērt</button>
       </div>
     </div>
@@ -703,7 +702,6 @@ let flatKeys = [], wordEls = [], dragging = false, anchor = -1, lastIdx = -1, mo
 let color = "#C00000", hl = "#FFE066";
 let mode = "mission";                       // "mission" | "challenge"
 let sampleState = null, chalT0 = null, chalTimer = null, refDef = null;
-const bestList = [];
 
 const doneSet = {};
 THEMES.forEach(t=>{ doneSet[t] = {}; LEVEL_ORDER.forEach(l=>doneSet[t][l[0]] = new Set()); });
@@ -971,7 +969,6 @@ function markTasks(){
 
 function updateProgress(){
   const n = doneSet[theme][level].size, t = cur().length;
-  $("pdfLevel").style.display = (n >= t) ? "inline-block" : "none";
   $("prog").textContent = "Misija " + (mi+1) + " no " + t + " · izpildītas: " + n + " / " + t;
   $("bar").style.width = (n/t*100) + "%";
 }
@@ -1552,7 +1549,8 @@ function savePdfTheme(){
       if(W) html += docHtml(W, theme + " · " + LEVEL_LABEL[l[0]] + " · misija " + (k+1));
     }
   });
-  if(chalWork) html += docHtml(chalWork, theme + " · izaicinājums «" + curChal().title + "»");
+  const CW = (mode === "challenge") ? currentWork() : chalWork;
+  if(CW) html += docHtml(CW, theme + " · izaicinājums «" + curChal().title + "»");
   if(!html){ setMsg("Vēl nav ko saglabāt.", "bad"); return; }
   printSet(html, "Noformesanas_misija_" + lat(theme) + "_visa_tema");
 }
@@ -1660,6 +1658,7 @@ function openDemo(k){
   $("headMine").innerHTML = "&#9997; SKOLOTĀJAS LAPA — rādi, kā to izdarīt";
   $("timeWrap").style.display = "none";
   $("chalDone").style.display = "none";
+  $("pdfThemeBar").style.display = "none";
   $("demoClear").style.display = "inline-block";
   $("demoPick").style.display = "inline";
   $("stepsCol").style.display = "flex";
@@ -1679,6 +1678,7 @@ function openChallenge(){
   $("headMine").innerHTML = "&#9997; TAVS TEKSTS";
   $("timeWrap").style.display = "inline";
   $("chalDone").style.display = "inline-block";
+  $("pdfThemeBar").style.display = "inline-block";
   $("demoClear").style.display = "none";
   $("demoPick").style.display = "none";
   $("stepsCol").style.display = "none";
@@ -1752,19 +1752,9 @@ function finishChallenge(){
   $("resPct").textContent = r.pct + "%";
   $("resTime").textContent = tstr;
   $("resExtra").textContent = r.extra;
-  bestList.push({pct:r.pct, secs:secs, name:""});
-  renderBest();
-  $("who").value = "";
-  $("who").oninput = ()=>{ bestList[bestList.length-1].name = $("who").value.trim(); renderBest(); };
   $("overlay").style.display = "flex";
 }
 
-function renderBest(){
-  const top = bestList.slice().sort((a,b)=> b.pct - a.pct || a.secs - b.secs).slice(0,3);
-  $("best").innerHTML = "<b>Labākie rezultāti šajā datorā:</b><br>" + top.map((x,n)=>
-    (n+1) + ". " + (x.name || "bez vārda") + " — " + x.pct + "% · " +
-    Math.floor(x.secs/60) + ":" + String(x.secs%60).padStart(2,"0")).join("<br>");
-}
 
 $("chal").onclick = openChallenge;
 if($("demoBtn")) $("demoBtn").onclick = ()=>openDemo(0);
@@ -1776,11 +1766,11 @@ $("demoClear").onclick = ()=>{
   sel.clear(); setMsg(""); render();
   $("stepsBody").querySelectorAll(".step").forEach(el=>el.classList.remove("done"));
 };
+$("pdfThemeBar").onclick = savePdfTheme;
 $("chalDone").onclick = finishChallenge;
 $("chalExit").onclick = ()=>{ exitChallengeView(); mode = "mission"; buildLevels(); load(); };
 $("againBtn").onclick = ()=>{ $("overlay").style.display = "none"; openChallenge(); };
 $("closeBtn").onclick = ()=>{ $("overlay").style.display = "none"; };
-$("printBtn").onclick = ()=>window.print();
 $("pdfTheme").onclick = ()=>{ $("overlay").style.display = "none"; savePdfTheme(); };
 
 /* ================= skolotāja režīms ================= */
