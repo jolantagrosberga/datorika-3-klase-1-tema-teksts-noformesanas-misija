@@ -198,21 +198,6 @@ button.act:disabled{background:#c5ccd6;cursor:not-allowed}
 .zoombar button:hover{background:#d9e6f6}
 .zoombar span{min-width:40px;text-align:center;font-weight:bold}
 /* ---------- PDF drukāšana ---------- */
-#printArea{display:none;color:#000;background:#fff}
-.pdoc{padding:0 0 10px}
-.plabel{font:bold 11pt/1.4 Arial, sans-serif;color:#1F4E79;border-bottom:1px solid #9bb4d0;
-        padding-bottom:3px;margin-bottom:12px}
-.ppara{margin-bottom:9pt;line-height:1.65}
-.ppara.ind{text-indent:2.2em}
-.pfoot{font:9pt Arial, sans-serif;color:#666;margin-top:14pt;border-top:1px solid #ccc;padding-top:4pt}
-@media print{
-  body > *{display:none !important}
-  body > #printArea{display:block !important}
-  .pdoc{page-break-after:always}
-  .pdoc:last-child{page-break-after:auto}
-  @page{margin:16mm}
-}
-
 /* ---------- rezultāts ---------- */
 .overlay{position:absolute;inset:0;background:rgba(255,255,255,.96);display:none;
          align-items:center;justify-content:center;z-index:50}
@@ -244,7 +229,6 @@ button.act:disabled{background:#c5ccd6;cursor:not-allowed}
 </style>
 </head>
 <body>
-<div id="printArea"></div>
 <div id="fit">
 <div class="app">
 
@@ -1516,15 +1500,96 @@ function workOf(th, lv, k){
   return workSaved[th + "|" + lv + "|" + k] || null;
 }
 
+function printCss(){
+  return "*{box-sizing:border-box}" +
+    "body{margin:0;padding:14mm 12mm;background:#fff;color:#000;" +
+      "font-family:Aptos,Calibri,Candara,'Segoe UI',sans-serif}" +
+    ".pdoc{page-break-after:always;break-after:page}" +
+    ".pdoc:last-child{page-break-after:auto;break-after:auto}" +
+    ".plabel{font:bold 11pt/1.4 Arial,sans-serif;color:#1F4E79;" +
+      "border-bottom:1px solid #9bb4d0;padding-bottom:3px;margin-bottom:12px}" +
+    ".ppara{margin-bottom:9pt;line-height:1.65}" +
+    ".ppara.ind{text-indent:2.2em}" +
+    ".pfoot{font:9pt Arial,sans-serif;color:#666;margin-top:14pt;" +
+      "border-top:1px solid #ccc;padding-top:4pt}" +
+    "@page{margin:14mm}" +
+    "@media print{body{padding:0}}";
+}
+
+function standaloneHtml(body, fileName){
+  return "<!DOCTYPE html><html lang=\"lv\"><head><meta charset=\"utf-8\">" +
+         "<title>" + esc(fileName) + "</title><style>" + printCss() + "</style></head>" +
+         "<body>" + body + "</body></html>";
+}
+
+/* Atver dokumentu jaunā cilnē, ja drukāšana rāmī nav iespējama. */
+function printFallback(doc, fileName){
+  try{
+    const blob = new Blob([doc], {type:"text/html;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, "_blank");
+    if(win){ setTimeout(()=>{ try{ win.focus(); win.print(); }catch(e){} }, 700); return true; }
+    const a = document.createElement("a");
+    a.href = url; a.download = fileName + ".html";
+    document.body.appendChild(a); a.click(); a.remove();
+    setMsg("Fails lejupielādēts. Atver to un nospied Ctrl+P, lai saglabātu PDF.");
+    return true;
+  }catch(e){ return false; }
+}
+
+/* Drukā paslēptā rāmī — rāmis paliek līdz drukas loga aizvēršanai. */
 function printSet(html, fileName){
-  const area = $("printArea");
-  area.innerHTML = html;
-  const old = document.title;
+  const doc = standaloneHtml(html, fileName);
+  const oldTitle = document.title;
   document.title = fileName;
-  setTimeout(()=>{
-    window.print();
-    setTimeout(()=>{ document.title = old; area.innerHTML = ""; }, 400);
-  }, 60);
+
+  let fr = document.getElementById("printFrame");
+  if(fr) fr.remove();
+  fr = document.createElement("iframe");
+  fr.id = "printFrame";
+  fr.setAttribute("title", fileName);
+  fr.style.cssText = "position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0";
+  document.body.appendChild(fr);
+
+  let cleaned = false;
+  const cleanup = ()=>{
+    if(cleaned) return;
+    cleaned = true;
+    document.title = oldTitle;
+    setTimeout(()=>{ const f = document.getElementById("printFrame"); if(f) f.remove(); }, 1500);
+  };
+
+  let w;
+  try{
+    w = fr.contentWindow;
+    const d = w.document;
+    d.open(); d.write(doc); d.close();
+  }catch(e){
+    fr.remove(); document.title = oldTitle;
+    printFallback(doc, fileName);
+    return;
+  }
+
+  const go = ()=>{
+    try{
+      w.focus();
+      if(w.matchMedia){
+        const mq = w.matchMedia("print");
+        if(mq.addEventListener) mq.addEventListener("change", e=>{ if(!e.matches) cleanup(); });
+      }
+      w.onafterprint = cleanup;
+      window.onafterprint = cleanup;
+      w.print();
+      /* ja drukas logs neatvērās, piedāvā rezerves ceļu */
+      setTimeout(cleanup, 120000);
+    }catch(e){
+      cleanup();
+      printFallback(doc, fileName);
+    }
+  };
+
+  /* gaida, līdz rāmja saturs ir pilnībā uzzīmēts */
+  setTimeout(go, 350);
 }
 
 /* viena līmeņa visas misijas */
